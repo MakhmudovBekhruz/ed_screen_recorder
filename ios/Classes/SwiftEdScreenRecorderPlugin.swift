@@ -245,7 +245,16 @@ public class SwiftEdScreenRecorderPlugin: NSObject, FlutterPlugin {
                                     self.audioInput?.markAsFinished()
                                 }
 
-                        
+                                self.videoWriter?.finishWriting {
+                                    DispatchQueue.main.async {
+                                        if self.videoWriter?.status == .completed {
+                                            self.message = "Video recording completed."
+                                        } else {
+                                            res = false
+                                            self.message = "Failed to finish writing with status: \(self.videoWriter?.status.rawValue ?? -1)"
+                                        }
+                                    }
+                                }
                             } else {
                                 res = false
                                 self.message = "Attempted to stop recording while writer status is: \(self.videoWriter?.status.rawValue ?? -1)"
@@ -263,4 +272,5 @@ public class SwiftEdScreenRecorderPlugin: NSObject, FlutterPlugin {
         }
         return res
     }
+
 }
