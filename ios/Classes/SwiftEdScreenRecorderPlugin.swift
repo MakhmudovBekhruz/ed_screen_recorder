@@ -245,25 +245,7 @@ public class SwiftEdScreenRecorderPlugin: NSObject, FlutterPlugin {
                                     self.audioInput?.markAsFinished()
                                 }
 
-                                self.videoWriter?.finishWriting {
-                                    DispatchQueue.main.async {
-                                        if self.videoWriter?.status == .completed {
-                                            PHPhotoLibrary.shared().performChanges({
-                                                PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: self.videoOutputURL!)
-                                            }) { success, error in
-                                                if success {
-                                                    self.message = "Video saved successfully."
-                                                } else {
-                                                    res = false
-                                                    self.message = "Failed to save video: \(error?.localizedDescription ?? "unknown error")"
-                                                }
-                                            }
-                                        } else {
-                                            res = false
-                                            self.message = "Failed to finish writing with status: \(self.videoWriter?.status.rawValue ?? -1)"
-                                        }
-                                    }
-                                }
+                        
                             } else {
                                 res = false
                                 self.message = "Attempted to stop recording while writer status is: \(self.videoWriter?.status.rawValue ?? -1)"
