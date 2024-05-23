@@ -1,7 +1,6 @@
 import Flutter
 import UIKit
 import ReplayKit
-import Photos
 
 struct RecorderConfig {
     var fileName: String = ""
@@ -141,93 +140,106 @@ public class SwiftEdScreenRecorderPlugin: NSObject, FlutterPlugin {
         return String((0..<length).map{ _ in letters.randomElement()! })
     }
     
+    
     @objc func startRecording(width: Int32, height: Int32) -> Bool {
-        var res : Bool = true
-        if(recorder.isAvailable){
+        var res: Bool = true
+        if recorder.isAvailable {
             if recorderConfig.dirPathToSave != "" {
-                recorderConfig.filePath = (recorderConfig.dirPathToSave ) as NSString
-                self.videoOutputURL = URL(fileURLWithPath: String(recorderConfig.filePath.appendingPathComponent(recorderConfig.fileName ) ))
+                recorderConfig.filePath = (recorderConfig.dirPathToSave) as NSString
+                self.videoOutputURL = URL(fileURLWithPath: String(recorderConfig.filePath.appendingPathComponent(recorderConfig.fileName)))
             } else {
                 recorderConfig.filePath = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true)[0] as NSString
-                self.videoOutputURL = URL(fileURLWithPath: String(recorderConfig.filePath.appendingPathComponent(recorderConfig.fileName ) ))
+                self.videoOutputURL = URL(fileURLWithPath: String(recorderConfig.filePath.appendingPathComponent(recorderConfig.fileName)))
             }
             do {
                 let fileManager = FileManager.default
-                if (fileManager.fileExists(atPath: videoOutputURL!.path)){
-                    try FileManager.default.removeItem(at: videoOutputURL!)}
-            } catch let fileError as NSError{
-                self.message=String(fileError as! Substring) as String
-                res = Bool(false);
+                if (fileManager.fileExists(atPath: videoOutputURL!.path)) {
+                    try FileManager.default.removeItem(at: videoOutputURL!)
+                }
+            } catch let fileError as NSError {
+                self.message = "File error: \(fileError.localizedDescription)"
+                res = false
             }
             
             do {
                 try videoWriter = AVAssetWriter(outputURL: videoOutputURL!, fileType: AVFileType.mp4)
-                self.message=String("Started Video")
+                self.message = "Started Video"
             } catch let writerError as NSError {
-                self.message=String(writerError as! Substring) as String
-                videoWriter = nil;
-                res = Bool(false);
+                self.message = "Writer error: \(writerError.localizedDescription)"
+                videoWriter = nil
+                res = false
             }
+            
             if #available(iOS 11.0, *) {
                 recorder.isMicrophoneEnabled = recorderConfig.isAudioEnabled
-                let videoSettings: [String : Any] = [
-                    AVVideoCodecKey  : AVVideoCodecType.h264,
-                    AVVideoWidthKey  : NSNumber.init(value: width),
-                    AVVideoHeightKey : NSNumber.init(value: height),
+                let videoSettings: [String: Any] = [
+                    AVVideoCodecKey: AVVideoCodecType.h264,
+                    AVVideoWidthKey: NSNumber(value: width),
+                    AVVideoHeightKey: NSNumber(value: height),
                     AVVideoCompressionPropertiesKey: [
                         AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
                         AVVideoAverageBitRateKey: recorderConfig.videoBitrate!
-                    ] as [String : Any],
+                    ]
                 ]
-                self.videoWriterInput = AVAssetWriterInput(mediaType: AVMediaType.video, outputSettings: videoSettings);
-                self.videoWriterInput?.expectsMediaDataInRealTime = true;
-                self.videoWriter?.add(videoWriterInput!);
-                if(recorderConfig.isAudioEnabled) {
-                    let audioOutputSettings: [String : Any] = [
-                        AVNumberOfChannelsKey : 2,
-                        AVFormatIDKey : kAudioFormatMPEG4AAC,
+                self.videoWriterInput = AVAssetWriterInput(mediaType: AVMediaType.video, outputSettings: videoSettings)
+                self.videoWriterInput?.expectsMediaDataInRealTime = true
+                self.videoWriter?.add(videoWriterInput!)
+                
+                if recorderConfig.isAudioEnabled {
+                    let audioOutputSettings: [String: Any] = [
+                        AVNumberOfChannelsKey: 2,
+                        AVFormatIDKey: kAudioFormatMPEG4AAC,
                         AVSampleRateKey: 44100,
                         AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
                     ]
                     self.audioInput = AVAssetWriterInput(mediaType: AVMediaType.audio, outputSettings: audioOutputSettings)
-                    self.audioInput?.expectsMediaDataInRealTime = true;
-                    self.videoWriter?.add(audioInput!);
+                    self.audioInput?.expectsMediaDataInRealTime = true
+                    self.videoWriter?.add(audioInput!)
                 }
                 
-                recorder.startCapture(handler: { (cmSampleBuffer, rpSampleType, error) in guard error == nil else { return }
+                recorder.startCapture(handler: { (cmSampleBuffer, rpSampleType, error) in
+                    guard error == nil else {
+                        self.message = "Capture error: \(error!.localizedDescription)"
+                        res = false
+                        return
+                    }
                     switch rpSampleType {
                     case RPSampleBufferType.video:
                         if self.videoWriter?.status == AVAssetWriter.Status.unknown {
                             self.videoWriter?.startWriting()
-                            self.videoWriter?.startSession(atSourceTime:  CMSampleBufferGetPresentationTimeStamp(cmSampleBuffer));
-                        }else if self.videoWriter?.status == AVAssetWriter.Status.writing {
-                            if (self.videoWriterInput?.isReadyForMoreMediaData == true) {
-                                if  self.videoWriterInput?.append(cmSampleBuffer) == false {
-                                    res = Bool(false)
-                                    self.message="Error starting capture";
+                            self.videoWriter?.startSession(atSourceTime: CMSampleBufferGetPresentationTimeStamp(cmSampleBuffer))
+                        } else if self.videoWriter?.status == AVAssetWriter.Status.writing {
+                            if self.videoWriterInput?.isReadyForMoreMediaData == true {
+                                if self.videoWriterInput?.append(cmSampleBuffer) == false {
+                                    res = false
+                                    self.message = "Error appending video buffer"
                                 }
                             }
                         }
                     case RPSampleBufferType.audioMic:
-                        if(self.recorderConfig.isAudioEnabled){
+                        if self.recorderConfig.isAudioEnabled {
                             if self.audioInput?.isReadyForMoreMediaData == true {
                                 if self.audioInput?.append(cmSampleBuffer) == false {
-                                    print(self.videoWriter?.status ?? "")
-                                    print(self.videoWriter?.error ?? "")
+                                    res = false
+                                    self.message = "Error appending audio buffer"
                                 }
                             }
                         }
                     default:
-                        break;
+                        break
                     }
-                }){(error) in guard error == nil else {
-                    return
-                }
+                }) { (error) in
+                    guard error == nil else {
+                        self.message = "Capture start error: \(error!.localizedDescription)"
+                        res = false
+                        return
+                    }
                 }
             }
         }
-        return  Bool(res)
+        return res
     }
+
     
     @objc func stopRecording() -> Bool {
         var res: Bool = true
